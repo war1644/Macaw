@@ -145,3 +145,15 @@ RewriteCond %{REQUEST_FILENAME} !-d
 
 RewriteRule ^(.*)$ index.php?$1 [QSA,L]
 ```
+nginx config
+===
+```
+autoindex off;
+
+location / {
+    if (!-e $request_filename) {
+        rewrite  ^/(.*)$  /index.php/$1  last;
+        break;
+    }
+}
+```
