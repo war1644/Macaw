@@ -1,11 +1,17 @@
 <?php
-namespace NoahBuscher\Macaw;
-use Base\MFWAF;
 
+namespace war1644\Macaw;
+use Base\Tool\MFWAF;
 /**
- * 增加waf过滤,当前调用方法名传递给控制器
- * 修改:路漫漫 <ahmerry@qq.com>
+ * MF框架核心路由类
+ * 修复一点BUG by 路漫漫 ahmerry@qq.com
+ * @auth NoahBuscher https://github.com/NoahBuscher/Macaw
+ * @link https://github.com/war1644/Macaw
+ * @since
+ * <p>2016/12/9 10:20  增加waf防御,传递方法到调用类</p>
+ * <p>2017/1/6 13:20  修改$_SERVER['PHP_SELF']为$_SERVER['SCRIPT_NAME']</p>
  */
+
 
 /**
  * @method static Macaw get(string $route, Callable $callback)
@@ -30,10 +36,12 @@ class Macaw {
     public static $error_callback;
 
     /**
-    * Defines a route w/ callback and method
-    */
+     * Defines a route w/ callback and method
+     */
     public static function __callstatic($method, $params) {
-        $uri = dirname($_SERVER['PHP_SELF']).'/'.$params[0];
+        //取PHP_SELF会导致$uri重复参数，修改SCRIPT_NAME
+//        $uri = dirname($_SERVER['PHP_SELF']).'/'.$params[0];
+        $uri = dirname($_SERVER['SCRIPT_NAME']).'/'.$params[0];
         $callback = $params[1];
         if (empty($params[2]) || $params[2]===true){
             array_push(self::$wafs, true);
@@ -46,8 +54,8 @@ class Macaw {
     }
 
     /**
-    * Defines callback if route is not found
-    */
+     * Defines callback if route is not found
+     */
     public static function error($callback) {
         self::$error_callback = $callback;
     }
@@ -57,24 +65,24 @@ class Macaw {
     }
 
     /**
-    * Runs the callback for the given request
-    */
+     * Runs the callback for the given request
+     */
     public static function dispatch(){
-        //当前请求不带参数url,忽略域名,
+        //当前请求不带参数url,忽略域名
         $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
         //当前请求方法
         $method = $_SERVER['REQUEST_METHOD'];
+        //记录到日志
+        MFLog("访问 : $uri,  method : $method");
         $searches = array_keys(static::$patterns);
         $replaces = array_values(static::$patterns);
         $found_route = false;
 
         //正则替换
         self::$routes = preg_replace('/\/+/', '/', self::$routes);
-
         // Check if route is defined without regex
         if (in_array($uri, self::$routes)) {
             $route_pos = array_keys(self::$routes, $uri);
-            var_dump($route_pos);
             foreach ($route_pos as $route) {
                 // Using an ANY option to match both GET and POST requests
                 if (self::$methods[$route] == $method || self::$methods[$route] == 'ANY') {
@@ -95,6 +103,7 @@ class Macaw {
 
                         // Instanitate controller
                         $controller = new $segments[0]();
+                        //保存当前控制器方法名
                         $controller->method = $segments[1];
                         // Call method
                         $controller->{$segments[1]}();
@@ -119,7 +128,8 @@ class Macaw {
                 if (preg_match('#^' . $route . '$#', $uri, $matched)) {
                     if (self::$methods[$pos] == $method || self::$methods[$pos] == 'ANY') {
                         $found_route = true;
-
+                        //非法数据过滤
+                        if (self::$wafs[$pos]===true) new MFWAF($method);
                         // Remove $matched[0] as [1] is the first parameter.
                         array_shift($matched);
 
@@ -141,6 +151,8 @@ class Macaw {
                             if (!method_exists($controller, $segments[1])) {
                                 echo "controller and action not found";
                             } else {
+                                //保存当前控制器方法名
+                                $controller->method = $segments[1];
                                 call_user_func_array(array($controller, $segments[1]), $matched);
                             }
 
@@ -159,10 +171,10 @@ class Macaw {
         // Run the error callback if the route was not found
         if ($found_route == false) {
             if (!self::$error_callback) {
-            self::$error_callback = function() {
-                header($_SERVER['SERVER_PROTOCOL'] . " 404 Not Found");
-                echo '404';
-            };
+                self::$error_callback = function() {
+                    header($_SERVER['SERVER_PROTOCOL'] . " 404 Not Found");
+                    echo '404';
+                };
             } else {
                 if (is_string(self::$error_callback)) {
                     self::get($_SERVER['REQUEST_URI'], self::$error_callback);
